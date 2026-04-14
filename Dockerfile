@@ -1,27 +1,24 @@
-# ---------- Stage 1: Build ----------
-FROM maven:3.9.6-eclipse-temurin-21 AS build
-
+# ---------- Build Stage ----------
+FROM maven:3.9.9-eclipse-temurin-21 AS builder
 WORKDIR /app
 
-# Copy pom.xml separately to cache dependencies
+# Copy pom first for dependency caching
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN mvn -B -q -e -DskipTests dependency:go-offline
 
-# Copy source code and build
+# Copy source and build
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN mvn -B -DskipTests clean package
 
-# ---------- Stage 2: Run ----------
-FROM eclipse-temurin:21-jre-alpine
-
+# ---------- Run Stage ----------
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# Run as non-root user
-RUN addgroup -S spring && adduser -S spring -G spring
-USER spring
+# Copy the built jar from builder
+COPY --from=builder /app/target/*.jar app.jar
 
-COPY --from=build /app/target/*.jar app.jar
-
+# Render provides PORT
+ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT}"]
